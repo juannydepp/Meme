@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# memedesk control. Usage: ./desk <command>
+cd "$(dirname "$0")"
+case "$1" in
+  start)    sudo systemctl start memedesk && echo "desk started — ./desk terminal to watch" ;;
+  stop)     sudo systemctl stop memedesk && echo "desk stopped" ;;
+  restart)  sudo systemctl restart memedesk && echo "desk restarted" ;;
+  status)   systemctl status memedesk --no-pager -n 5 ;;
+  terminal|t) npx tsx src/ui/terminal.ts ;;
+  recap)    npx tsx src/recap.ts "${2:-0}" ;;
+  doctor)   npx tsx src/doctor.ts ;;
+  golive)   npx tsx src/golive.ts ;;
+  audit)    npx tsx src/audit.ts ;;
+  logs)     journalctl -u memedesk -f -n 50 ;;
+  sim)      rm -f data/*.sim.json; DATA=sim SIM_SPEED="${2:-600}" SIM_HOURS="${3:-10}" DATA_DIR=data LOG_DIR=logs/sim npx tsx src/main.ts && DATA=sim LOG_DIR=logs/sim npx tsx src/audit.ts ;;
+  *) cat <<USAGE
+memedesk
+  ./desk doctor     check every data source (run first)
+  ./desk start      start the desk (runs 24/7, survives reboots)
+  ./desk terminal   live terminal (q to quit — desk keeps running)
+  ./desk recap [h]  print the recap now (optionally last h hours)
+  ./desk audit      prove every hard rule held, from the logs
+  ./desk golive     paper → live readiness check
+  ./desk stop | restart | status | logs
+  ./desk sim [speed] [hours]   offline simulated run (no network)
+USAGE
+esac

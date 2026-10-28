@@ -1,0 +1,32 @@
+{
+  "name": "memedesk",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "sim": "DATA=sim tsx src/main.ts",
+    "terminal": "tsx src/ui/terminal.ts",
+    "recap": "tsx src/recap.ts",
+    "doctor": "tsx src/doctor.ts",
+    "golive-check": "tsx src/golive.ts",
+    "audit": "tsx src/audit.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@solana/web3.js": "^1.99.0",
+    "bs58": "^6.0.0",
+    "dotenv": "^18.0.9",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/ws": "^8.18.2",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  },
+  "type": "module"
+}
