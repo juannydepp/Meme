@@ -85,6 +85,7 @@ export interface Position {
   costSol: number;         // total SOL spent incl. fees
   entryPrice: number;      // cost basis per token in SOL (costSol / tokens)
   entryLiquidityUsd: number;
+  pairAddress?: string;
   openedAt: number;
   peakPrice: number;
   trailActive: boolean;

@@ -18,6 +18,7 @@ export class Risk {
   private exiting = new Set<string>();
   private confirming = new Set<string>();
   private unconfirmed = new Set<string>();
+  private ticking = false;
   constructor(private d: Desk) {}
 
   start() {
@@ -33,9 +34,12 @@ export class Risk {
   }
 
   /** The Executor must call this before every buy. Returns null if allowed, else the reason. */
-  mayOpen(mint: string): string | null {
+  mayOpen(mint: string, symbol = ''): string | null {
     const s = this.d.state, now = clock.now();
     if (s.positions.some((p) => p.mint === mint)) return 'already holding this token (no averaging down)';
+    const tick = (x: string) => x.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const twin = tick(symbol) && s.positions.find((p) => tick(p.symbol) === tick(symbol));
+    if (twin) return `already holding $${twin.symbol} — same ticker, copycat tokens move together`;
     if ((s.revengeBans[mint] ?? 0) > now) return `token stopped us out — banned until ${new Date(s.revengeBans[mint]).toISOString().slice(11, 16)}Z (no revenge trades)`;
     if (s.dailyHalted) return `daily loss limit hit (-${CONFIG.dailyLossHaltPct}%) — no new entries until tomorrow`;
     if (s.cooldownUntil > now) return `loss-streak cooldown (${s.lossStreak} straight losses) for ${Math.ceil((s.cooldownUntil - now) / 60_000)} more min`;
@@ -48,20 +52,44 @@ export class Risk {
     this.checkDaily();
     if (!s.positions.length) { activity.state('RISK', s.dailyHalted ? 'halted' : 'idle'); return; }
     activity.state('RISK', 'busy');
+    if (this.ticking) return;      // quotes are rate-limited; never let ticks pile up
+    this.ticking = true;
+    try { await this.mark(); } finally { this.ticking = false; }
+  }
+
+  // Positions are marked at what Jupiter would actually pay for them (after impact and fees).
+  // DexScreener is only a fallback; it lags badly on young pools and switches between pairs.
+  private async mark() {
+    const s = this.d.state;
     let snaps = new Map();
     try { snaps = await this.d.market.pairs(s.positions.map((p) => p.mint)); } catch { /* handled via blackout rule */ }
-    const now = clock.now();
     for (const p of [...s.positions]) {
       if (this.exiting.has(p.id)) continue;
       const snap = snaps.get(p.mint);
-      if (snap && snap.priceSol > 0) { p.lastPrice = snap.priceSol; p.lastPriceAt = now; p.lastLiquidityUsd = snap.liquidityUsd; }
+      const q = await this.d.market.quoteSell(p.mint, p.tokens, p.decimals);
+      const now = clock.now();
+      const quoted = q && p.tokens > 0 && q.sol > 0;
+      if (quoted) { p.lastPrice = q!.sol / p.tokens; p.lastPriceAt = now; }
+      else if (snap && snap.priceSol > 0) { p.lastPrice = snap.priceSol; p.lastPriceAt = now; }
+      // liquidity only counts on the same pool we entered (DexScreener flips between pairs)
+      const samePool = snap && (!p.pairAddress || snap.pairAddress === p.pairAddress);
+      if (samePool) p.lastLiquidityUsd = snap!.liquidityUsd;
       const chg = (p.lastPrice / p.entryPrice - 1);
 
       if (now - p.lastPriceAt > CONFIG.priceBlackoutExitSec * 1000) { this.exit(p, `no price data for ${CONFIG.priceBlackoutExitSec}s — exiting blind`); continue; }
-      if (p.lastLiquidityUsd < p.entryLiquidityUsd * (1 - CONFIG.liquidityPullExitPct / 100)) {
-        this.exit(p, `pool liquidity down ${((1 - p.lastLiquidityUsd / p.entryLiquidityUsd) * 100).toFixed(0)}% since entry — possible pull`); continue;
+      if (samePool && p.lastLiquidityUsd < p.entryLiquidityUsd * (1 - CONFIG.liquidityPullExitPct / 100)) {
+        // a real pull shows up in the exit quote; a DexScreener glitch doesn't
+        const quoteDown = !quoted || chg <= -CONFIG.stopLossPct / 2;
+        if (quoteDown) { this.exit(p, `pool liquidity down ${((1 - p.lastLiquidityUsd / p.entryLiquidityUsd) * 100).toFixed(0)}% since entry, exit value ${pct(chg * 100)} — possible pull`); continue; }
       }
-      if (p.lastPrice > p.peakPrice) p.peakPrice = p.lastPrice;
+      // peaks and trail arming only move on executable prices, never on a DexScreener spike
+      if (quoted && p.lastPrice > p.peakPrice) p.peakPrice = p.lastPrice;
+      if (quoted && p.lastPrice <= p.stopPrice) {
+        this.exit(p, p.trailActive
+          ? `trailing stop: ${pct(chg * 100)} (peak ${pct((p.peakPrice / p.entryPrice - 1) * 100)})`
+          : `hard stop -${(CONFIG.stopLossPct * 100).toFixed(0)}%: at ${pct(chg * 100)}`);
+        continue;
+      }
       if (!p.trailActive && p.peakPrice >= p.entryPrice * (1 + CONFIG.trailActivatePct)) {
         p.trailActive = true;
         bus.decide({ agent: 'RISK', kind: 'info', mint: p.mint, symbol: p.symbol, reason: `TRAIL ARMED ${sym(p.symbol, p.mint)} at ${pct(chg * 100)} — exits ${(CONFIG.trailDistancePct * 100).toFixed(0)}% below peak` });

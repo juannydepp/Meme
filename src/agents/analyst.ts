@@ -62,10 +62,14 @@ export class Analyst {
     const rounded = Math.round(score * 1000) / 1000;
     const comps = Object.fromEntries(Object.entries(c).map(([k, v]) => [k, Math.round(v * 100) / 100]));
 
-    if (rounded < CONFIG.minScore) {
+    // vetoes: a good average can't buy a token that is dumping right now or has already run
+    const veto = dumping ? `dumping now (5m ${pct(s.changeM5, 0)}, ${s.sellsM5} sells vs ${s.buysM5} buys)`
+      : c.notLate === 0 ? `already ran ${pct(s.changeH1, 0)} in the last hour` : null;
+    if (veto || rounded < CONFIG.minScore) {
       activity.inc('ANALYST', 'reject');
       bus.decide({ agent: 'ANALYST', kind: 'reject', mint: t.mint, symbol: t.symbol, leadId: t.leadId,
-        reason: `NO TRADE ${tag} score ${rounded.toFixed(2)} < ${CONFIG.minScore} — weakest: ${weakest(comps)}`, data: { score: rounded, components: comps, reasons } });
+        reason: veto ? `NO TRADE ${tag} veto: ${veto} (score ${rounded.toFixed(2)})`
+          : `NO TRADE ${tag} score ${rounded.toFixed(2)} < ${CONFIG.minScore} — weakest: ${weakest(comps)}`, data: { score: rounded, components: comps, reasons, veto } });
     } else {
       const ticket = issue({ filterTicketId: t.ticketId, mint: t.mint, symbol: t.symbol, score: rounded, components: comps, reasons, issuedAt: clock.now() });
       activity.inc('ANALYST', 'approve');

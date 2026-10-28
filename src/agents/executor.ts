@@ -43,7 +43,7 @@ export class Executor {
       const age = (clock.now() - v.filter.issuedAt) / 1000;
       if (age > CONFIG.ticketMaxAgeSec) return this.reject(t, `filter data ${age.toFixed(0)}s old (max ${CONFIG.ticketMaxAgeSec}s)`);
       // 2. risk policy
-      const veto = this.risk.mayOpen(t.mint);
+      const veto = this.risk.mayOpen(t.mint, t.symbol);
       if (veto) return this.reject(t, veto);
       // 3. size
       const spendable = Math.max(0, s.balanceSol - CONFIG.feeReserveSol);
@@ -76,9 +76,9 @@ export class Executor {
       const entryPrice = cost / tokens;
       const p: Position = {
         id: `P-${String(++this.seq).padStart(4, '0')}-${t.mint.slice(0, 4)}`, mint: t.mint, symbol: t.symbol, decimals,
-        tokens, costSol: cost, entryPrice, entryLiquidityUsd: v.filter.snapshot.liquidityUsd, openedAt: clock.now(),
+        tokens, costSol: cost, entryPrice, entryLiquidityUsd: v.filter.snapshot.liquidityUsd, pairAddress: v.filter.snapshot.pairAddress, openedAt: clock.now(),
         peakPrice: entryPrice, trailActive: false, stopPrice: entryPrice * (1 - CONFIG.stopLossPct),
-        lastPrice: v.filter.snapshot.priceSol, lastPriceAt: clock.now(), lastLiquidityUsd: v.filter.snapshot.liquidityUsd,
+        lastPrice: entryPrice, lastPriceAt: clock.now(), lastLiquidityUsd: v.filter.snapshot.liquidityUsd,
         filterTicketId: v.filter.ticketId, analystTicketId: t.ticketId, entryReason: why, buySig: sig,
       };
       s.balanceSol -= cost;
