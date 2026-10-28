@@ -106,7 +106,7 @@ function render(): string {
   if (!s.positions.length) out.push(c.dim(' flat — no open positions'));
   for (const p of s.positions) {
     const stop = p.trail ? c.cy(`trail ${sgn(p.stopPct)}%`) : c.dim(`stop ${sgn(p.stopPct)}%`);
-    out.push(fit(` ${c.bold(('$' + p.symbol).padEnd(10))} ${colorPct(p.pnlPct).padEnd(16)} ${stop}  ${c.dim(`peak ${sgn(p.peakPct)}%`)}  ${p.costSol.toFixed(3)} SOL  ${c.dim(ago(now - p.openedAt))}`, W));
+    out.push(fit(` ${c.bold(('$' + p.symbol).padEnd(10))} ${colorPct(p.pnlPct).padEnd(16)} ${stop}  ${c.dim(`peak ${sgn(p.peakPct)}%`)}  ${(p.valueSol ?? p.costSol).toFixed(3)} SOL ${c.dim(`(in ${p.costSol.toFixed(3)})`)}  ${c.dim(ago(now - p.openedAt))}`, W));
   }
 
   out.push(hr('EQUITY (SOL)'));

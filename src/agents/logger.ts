@@ -133,7 +133,7 @@ export class Logger {
       at: clock.now(), mode: s.mode, data: this.d.market.kind, speed: clock.speed, startedAt: s.sessionStartedAt,
       startBalance: s.startBalanceSol, balance: s.balanceSol, equity: eq, solUsd: this.d.solUsd,
       dayStartEquity: s.dayStartEquity, dailyHalted: s.dailyHalted, cooldownUntil: s.cooldownUntil, lossStreak: s.lossStreak,
-      positions: s.positions.map((p) => ({ symbol: p.symbol, mint: p.mint, costSol: p.costSol, pnlPct: (p.lastPrice * p.tokens / p.costSol - 1) * 100,
+      positions: s.positions.map((p) => ({ symbol: p.symbol, mint: p.mint, costSol: p.costSol, valueSol: p.lastPrice * p.tokens, pnlPct: (p.lastPrice * p.tokens / p.costSol - 1) * 100,
         stopPct: (p.stopPrice / p.entryPrice - 1) * 100, trail: p.trailActive, peakPct: (p.peakPrice / p.entryPrice - 1) * 100, openedAt: p.openedAt })),
       closed: { n: s.closed.length, wins: s.closed.filter((t) => t.pnlSol > 0).length, pnl: s.closed.reduce((a, t) => a + t.pnlSol, 0) },
       agents: [...activity.agents.values()], waiting: this.waitingCount(), feeds: this.statusLines,

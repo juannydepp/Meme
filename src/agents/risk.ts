@@ -16,6 +16,8 @@ import type { ClosedTrade, Position } from '../types';
 export class Risk {
   private dayFmt = new Intl.DateTimeFormat('en-CA', { timeZone: CONFIG.recapTz, year: 'numeric', month: '2-digit', day: '2-digit' });
   private exiting = new Set<string>();
+  private confirming = new Set<string>();
+  private unconfirmed = new Set<string>();
   constructor(private d: Desk) {}
 
   start() {
@@ -66,11 +68,33 @@ export class Risk {
       }
       if (p.trailActive) p.stopPrice = Math.max(p.stopPrice, p.peakPrice * (1 - CONFIG.trailDistancePct));
       if (p.lastPrice <= p.stopPrice) {
-        this.exit(p, p.trailActive
+        void this.confirmThenExit(p, p.trailActive
           ? `trailing stop: ${pct(chg * 100)} (peak ${pct((p.peakPrice / p.entryPrice - 1) * 100)})`
           : `hard stop -${(CONFIG.stopLossPct * 100).toFixed(0)}%: at ${pct(chg * 100)}`);
-      }
+      } else this.unconfirmed.delete(p.id);
     }
+  }
+
+  // DexScreener lags on young pools and can sit far from the executable price (entry is a Jupiter fill),
+  // so a stop it trips is only acted on once a Jupiter sell quote agrees. No quote (no route / API down) → exit anyway.
+  private async confirmThenExit(p: Position, reason: string) {
+    if (this.confirming.has(p.id)) return;
+    this.confirming.add(p.id);
+    try {
+      const q = await this.d.market.quoteSell(p.mint, p.tokens, p.decimals);
+      const px = q && p.tokens > 0 ? q.sol / p.tokens : null;
+      if (!this.d.state.positions.some((x) => x.id === p.id) || this.exiting.has(p.id)) return;
+      if (px !== null && px > p.stopPrice) {
+        if (!this.unconfirmed.has(p.id)) {
+          this.unconfirmed.add(p.id);
+          bus.decide({ agent: 'RISK', kind: 'info', mint: p.mint, symbol: p.symbol,
+            reason: `STOP NOT CONFIRMED ${sym(p.symbol, p.mint)}: DexScreener says ${reason}, Jupiter quote ${pct((px / p.entryPrice - 1) * 100)} — holding` });
+        }
+        return;
+      }
+      this.unconfirmed.delete(p.id);
+      this.exit(p, px === null ? `${reason} (no Jupiter quote to confirm)` : `${reason}, Jupiter ${pct((px / p.entryPrice - 1) * 100)}`);
+    } finally { this.confirming.delete(p.id); }
   }
 
   private exit(p: Position, reason: string) {
@@ -84,6 +108,7 @@ export class Risk {
   private onClosed(t: ClosedTrade) {
     const s = this.d.state;
     this.exiting.delete(t.id);
+    this.unconfirmed.delete(t.id);
     if (t.pnlSol < 0) {
       s.lossStreak++;
       s.revengeBans[t.mint] = clock.now() + CONFIG.revengeBanHours * 3600_000;
