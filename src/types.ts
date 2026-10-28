@@ -86,6 +86,7 @@ export interface Position {
   entryPrice: number;      // cost basis per token in SOL (costSol / tokens)
   entryLiquidityUsd: number;
   pairAddress?: string;
+  shadowCooldown?: string;   // set when this entry happened during a cooldown that was not enforced
   openedAt: number;
   peakPrice: number;
   trailActive: boolean;

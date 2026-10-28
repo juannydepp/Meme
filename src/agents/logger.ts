@@ -112,10 +112,10 @@ export class Logger {
 
   private tradeRow(t: ClosedTrade) {
     const f = path.join(this.dayDir(t.closedAt), 'trades.csv');
-    if (!fs.existsSync(f)) fs.writeFileSync(f, 'opened,closed,symbol,mint,cost_sol,proceeds_sol,pnl_sol,pnl_pct,held_min,entry_reason,exit_reason\n');
+    if (!fs.existsSync(f)) fs.writeFileSync(f, 'opened,closed,symbol,mint,cost_sol,proceeds_sol,pnl_sol,pnl_pct,held_min,in_shadow_cooldown,entry_reason,exit_reason\n');
     const q = (s: string) => `"${s.replace(/"/g, "'")}"`;
     fs.appendFileSync(f, [new Date(t.openedAt).toISOString(), new Date(t.closedAt).toISOString(), t.symbol, t.mint, t.costSol.toFixed(5), t.proceedsSol.toFixed(5),
-      t.pnlSol.toFixed(5), t.pnlPct.toFixed(2), ((t.closedAt - t.openedAt) / 60_000).toFixed(1), q(t.entryReason), q(t.exitReason)].join(',') + '\n');
+      t.pnlSol.toFixed(5), t.pnlPct.toFixed(2), ((t.closedAt - t.openedAt) / 60_000).toFixed(1), t.shadowCooldown ? 'yes' : 'no', q(t.entryReason), q(t.exitReason)].join(',') + '\n');
   }
 
   private async recapCheck() {
@@ -132,7 +132,7 @@ export class Logger {
     writeJson('live.json', {
       at: clock.now(), mode: s.mode, data: this.d.market.kind, speed: clock.speed, startedAt: s.sessionStartedAt,
       startBalance: s.startBalanceSol, balance: s.balanceSol, equity: eq, solUsd: this.d.solUsd,
-      dayStartEquity: s.dayStartEquity, dailyHalted: s.dailyHalted, cooldownUntil: s.cooldownUntil, lossStreak: s.lossStreak,
+      dayStartEquity: s.dayStartEquity, dailyHalted: s.dailyHalted, cooldownUntil: s.cooldownUntil, cooldownMode: CONFIG.cooldownMode, lossStreak: s.lossStreak,
       positions: s.positions.map((p) => ({ symbol: p.symbol, mint: p.mint, costSol: p.costSol, valueSol: p.lastPrice * p.tokens, pnlPct: (p.lastPrice * p.tokens / p.costSol - 1) * 100,
         stopPct: (p.stopPrice / p.entryPrice - 1) * 100, trail: p.trailActive, peakPct: (p.peakPrice / p.entryPrice - 1) * 100, openedAt: p.openedAt })),
       closed: { n: s.closed.length, wins: s.closed.filter((t) => t.pnlSol > 0).length, pnl: s.closed.reduce((a, t) => a + t.pnlSol, 0) },

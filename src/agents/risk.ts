@@ -42,7 +42,7 @@ export class Risk {
     if (twin) return `already holding $${twin.symbol} — same ticker, copycat tokens move together`;
     if ((s.revengeBans[mint] ?? 0) > now) return `token stopped us out — banned until ${new Date(s.revengeBans[mint]).toISOString().slice(11, 16)}Z (no revenge trades)`;
     if (s.dailyHalted) return `daily loss limit hit (-${CONFIG.dailyLossHaltPct}%) — no new entries until tomorrow`;
-    if (s.cooldownUntil > now) return `loss-streak cooldown (${s.lossStreak} straight losses) for ${Math.ceil((s.cooldownUntil - now) / 60_000)} more min`;
+    if (s.cooldownUntil > now && CONFIG.cooldownMode === 'enforce') return `loss-streak cooldown (${s.lossStreak} straight losses) for ${Math.ceil((s.cooldownUntil - now) / 60_000)} more min`;
     if (s.positions.length >= CONFIG.maxOpenPositions) return `max ${CONFIG.maxOpenPositions} open positions`;
     return null;
   }
@@ -130,6 +130,12 @@ export class Risk {
     bus.decide({ agent: 'RISK', kind: 'info', mint: p.mint, symbol: p.symbol, reason: `EXIT ORDER ${sym(p.symbol, p.mint)}: ${reason} → EXECUTOR` });
     bus.emit('exit.order', { positionId: p.id, mint: p.mint, reason, markPrice: p.lastPrice });
   }
+  /** In shadow mode: the cooldown that WOULD have blocked an entry right now, else null */
+  shadowCooldown(): string | null {
+    const s = this.d.state, now = clock.now();
+    if (CONFIG.cooldownMode !== 'shadow' || s.cooldownUntil <= now) return null;
+    return `${s.lossStreak} losses in a row, ${Math.ceil((s.cooldownUntil - now) / 60_000)} min left`;
+  }
   /** Executor reports a failed sell → allow Risk to re-issue on the next tick */
   exitFailed(positionId: string) { this.exiting.delete(positionId); }
 
@@ -143,7 +149,9 @@ export class Risk {
       if (s.lossStreak >= 3) s.cooldownUntil = clock.now() + CONFIG.lossStreakLongCooldownMin * 60_000;
       else if (s.lossStreak >= 2) s.cooldownUntil = clock.now() + CONFIG.lossStreakCooldownMin * 60_000;
       if (s.cooldownUntil > clock.now())
-        bus.decide({ agent: 'RISK', kind: 'warn', reason: `${s.lossStreak} losses in a row → no new entries for ${Math.round((s.cooldownUntil - clock.now()) / 60_000)} min` });
+        bus.decide({ agent: 'RISK', kind: 'warn', reason: CONFIG.cooldownMode === 'shadow'
+          ? `${s.lossStreak} losses in a row → cooldown ${Math.round((s.cooldownUntil - clock.now()) / 60_000)} min (SHADOW: not blocking, trades tagged)`
+          : `${s.lossStreak} losses in a row → no new entries for ${Math.round((s.cooldownUntil - clock.now()) / 60_000)} min` });
     } else s.lossStreak = 0;
     this.checkDaily();
   }

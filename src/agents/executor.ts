@@ -80,14 +80,15 @@ export class Executor {
         peakPrice: entryPrice, trailActive: false, stopPrice: entryPrice * (1 - CONFIG.stopLossPct),
         lastPrice: entryPrice, lastPriceAt: clock.now(), lastLiquidityUsd: v.filter.snapshot.liquidityUsd,
         filterTicketId: v.filter.ticketId, analystTicketId: t.ticketId, entryReason: why, buySig: sig,
+        shadowCooldown: this.risk.shadowCooldown() ?? undefined,
       };
       s.balanceSol -= cost;
       s.positions.push(p);
       saveState(s);
       activity.inc('EXECUTOR', 'buys');
       bus.decide({ agent: 'EXECUTOR', kind: 'buy', mint: t.mint, symbol: t.symbol,
-        reason: `BUY ${sym(t.symbol, t.mint)} ${cost.toFixed(3)} SOL (${((cost / (s.balanceSol + cost)) * 100).toFixed(1)}% of bal) — ${why}`,
-        data: { positionId: p.id, cost, tokens, entryPrice, sig, filterTicket: v.filter.ticketId, analystTicket: t.ticketId } });
+        reason: `BUY ${sym(t.symbol, t.mint)} ${cost.toFixed(3)} SOL (${((cost / (s.balanceSol + cost)) * 100).toFixed(1)}% of bal)${p.shadowCooldown ? ` [IN SHADOW COOLDOWN: ${p.shadowCooldown}]` : ''} — ${why}`,
+        data: { positionId: p.id, cost, tokens, entryPrice, sig, shadowCooldown: p.shadowCooldown, filterTicket: v.filter.ticketId, analystTicket: t.ticketId } });
       bus.emit('position.opened', p);
     } catch (e: any) {
       bus.decide({ agent: 'EXECUTOR', kind: 'error', mint: t.mint, symbol: t.symbol, reason: `buy failed ${sym(t.symbol, t.mint)}: ${e?.message ?? e}` });

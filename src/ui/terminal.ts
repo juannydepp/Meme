@@ -90,7 +90,7 @@ function render(): string {
   out.push(fit(` ${c.dim('P&L')} ${(pnl >= 0 ? c.g : c.r)(`${sgn(pnl, 3)} SOL`)} ${colorPct(pnlPct, 2)}   ${c.dim('today')} ${colorPct(dayPct)}   ${c.dim('trades')} ${s.closed.n} ${c.g(`${s.closed.wins}W`)}/${c.r(`${s.closed.n - s.closed.wins}L`)}`, W));
   const flags: string[] = [];
   if (s.dailyHalted) flags.push(c.r('■ DAILY LOSS HALT — no new entries today'));
-  if (s.cooldownUntil > now) flags.push(c.y(`◐ cooldown ${ago(s.cooldownUntil - now)} (${s.lossStreak} losses in a row)`));
+  if (s.cooldownUntil > now) flags.push(c.y(`◐ ${s.cooldownMode === 'shadow' ? 'SHADOW cooldown (not blocking)' : 'cooldown'} ${ago(s.cooldownUntil - now)} (${s.lossStreak} losses in a row)`));
   for (const f of Object.values(s.feeds ?? {}) as any[]) if (!f.ok) flags.push(c.y(`⚠ ${f.msg}`));
   for (const f of flags) out.push(fit(' ' + f, W));
 

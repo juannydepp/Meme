@@ -67,6 +67,8 @@ export const CONFIG = {
   dailyLossHaltPct: num('DAILY_LOSS_HALT_PCT', 12),     // equity down 12% on the day = no new entries until next day
   lossStreakCooldownMin: num('LOSS_STREAK_COOLDOWN_MIN', 45), // after 2 straight losses
   lossStreakLongCooldownMin: num('LOSS_STREAK_LONG_COOLDOWN_MIN', 120), // after 3+
+  // enforce = block entries during cooldown. shadow = don't block, but tag every trade it would have blocked
+  cooldownMode: (env('COOLDOWN_MODE') === 'shadow' ? 'shadow' : 'enforce') as 'enforce' | 'shadow',
   revengeBanHours: num('REVENGE_BAN_HOURS', 24),        // never re-buy a token that stopped you out
   ticketMaxAgeSec: num('TICKET_MAX_AGE_SEC', 45),       // filter data older than this = stale, no trade
   liquidityPullExitPct: num('LIQ_PULL_EXIT_PCT', 40),   // pool liquidity down 40% from entry = get out

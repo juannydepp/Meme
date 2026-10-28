@@ -78,6 +78,22 @@ export function buildRecap(s: DeskState, sinceTs?: number) {
   L.push(`- Max drawdown in window ${maxDrawdownPct(eqWindow).toFixed(1)}% · open positions ${s.positions.length}`);
   L.push(`- Hard-limit violations: **${s.violations.length}**${s.dailyHalted ? ' · ⚠ daily loss halt is ACTIVE' : ''}`);
   if (eqWindow.length > 2) { L.push(''); L.push('```'); L.push(`equity ${sparkline(eqWindow.map((p) => p.v))}`); L.push('```'); }
+  // cooldown experiment: every trade ever tagged, across the whole session (one night is too few)
+  const tagged = s.closed.filter((t) => t.shadowCooldown), normal = s.closed.filter((t) => !t.shadowCooldown);
+  if (CONFIG.cooldownMode === 'shadow' || tagged.length) {
+    const stats = (a: typeof tagged) => {
+      const w = a.filter((t) => t.pnlSol > 0), pnl = a.reduce((x, t) => x + t.pnlSol, 0);
+      const g = w.reduce((x, t) => x + t.pnlSol, 0), lo = -a.filter((t) => t.pnlSol <= 0).reduce((x, t) => x + t.pnlSol, 0);
+      return `${a.length} trades · ${w.length}W/${a.length - w.length}L${a.length ? ` · win ${((w.length / a.length) * 100).toFixed(0)}% · avg ${pct(a.reduce((x, t) => x + t.pnlPct, 0) / a.length)}` : ''} · P&L ${pnl >= 0 ? '+' : ''}${pnl.toFixed(4)} SOL · PF ${lo > 0 ? (g / lo).toFixed(2) : g > 0 ? '∞' : '—'}`;
+    };
+    const taggedPnl = tagged.reduce((x, t) => x + t.pnlSol, 0);
+    L.push('');
+    L.push(`## Cooldown experiment (${CONFIG.cooldownMode === 'shadow' ? 'SHADOW — cooldown not enforced' : 'enforced'}, whole session)`);
+    L.push(`- Trades the cooldown **would have blocked**: ${stats(tagged)}`);
+    L.push(`- All other trades: ${stats(normal)}`);
+    if (tagged.length) L.push(`- **Verdict so far:** cooldown would have ${taggedPnl < 0 ? `**saved ${(-taggedPnl).toFixed(4)} SOL** → keep it` : `**cost ${taggedPnl.toFixed(4)} SOL** of profit → it's hurting`}${tagged.length < 15 ? ` (only ${tagged.length} tagged trades — not enough to decide; aim for 15+)` : ''}`);
+    else L.push(`- No trades during a would-be cooldown yet.`);
+  }
   L.push('');
   L.push(`## Funnel`);
   L.push(`| Stage | Count |`); L.push(`|---|---|`);
