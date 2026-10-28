@@ -25,7 +25,7 @@ export class Risk {
     bus.on('position.opened', (p) => {
       activity.inc('RISK', 'watching');
       bus.decide({ agent: 'RISK', kind: 'info', mint: p.mint, symbol: p.symbol,
-        reason: `WATCH ${sym(p.symbol, p.mint)} stop ${p.stopPrice.toPrecision(4)} (-${(CONFIG.stopLossPct * 100).toFixed(0)}%), trail arms at +${(CONFIG.trailActivatePct * 100).toFixed(0)}%` });
+        reason: `WATCH ${sym(p.symbol, p.mint)} · stop -${(CONFIG.stopLossPct * 100).toFixed(0)}% · trail arms at +${(CONFIG.trailActivatePct * 100).toFixed(0)}%` });
     });
     bus.on('position.closed', (t) => this.onClosed(t));
     clock.every(3000, () => this.tick().catch((e) => bus.decide({ agent: 'RISK', kind: 'error', reason: `risk tick failed: ${e?.message ?? e}` })));

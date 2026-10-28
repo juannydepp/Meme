@@ -16,6 +16,8 @@ import type { ClosedTrade, Decision } from '../types';
 // It also watches what killed tokens did afterwards: if a token's pool is pulled within
 // 24h, its dev is marked as a rugger and blacklisted — the desk learns.
 
+const FEED_MAX = 150;
+
 interface Tracked {
   mint: string; symbol: string; creator: string | null; verdict: 'filter-kill' | 'analyst-reject' | 'traded';
   reason: string; firstAt: number; firstPrice: number; firstLiq: number; peak: number; low: number; lastLiq: number;
@@ -35,6 +37,27 @@ export class Logger {
     fs.mkdirSync(CONFIG.logDir, { recursive: true });
     // resume tracking judged tokens across restarts
     for (const t of readJson<Tracked[]>('outcomes.pending.json', [])) this.tracked.set(t.mint, t);
+    // keep agent counters and the feed across restarts
+    for (const [name, c] of Object.entries(d.state.counters ?? {})) {
+      const a = activity.agents.get(name as any); if (a) Object.assign(a.counters, c);
+    }
+    this.feed = this.loadFeed();
+  }
+
+  private loadFeed(): Decision[] {
+    const out: Decision[] = [];
+    try {
+      const days = fs.readdirSync(CONFIG.logDir).filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(x)).sort().slice(-2);
+      for (const day of days) {
+        const f = path.join(CONFIG.logDir, day, 'decisions.jsonl');
+        if (!fs.existsSync(f)) continue;
+        const lines = fs.readFileSync(f, 'utf8').split('\n').filter(Boolean).slice(-600);
+        for (const l of lines) {
+          try { const d = JSON.parse(l) as Decision; if (d.kind !== 'hold' || (d.data as any)?.attempt === 0) out.push(d); } catch { /* skip */ }
+        }
+      }
+    } catch { /* no logs yet */ }
+    return out.slice(-FEED_MAX);
   }
   setWaitingCounter(f: () => number) { this.waitingCount = f; }
 
@@ -57,7 +80,7 @@ export class Logger {
 
   private record(d: Decision) {
     if (d.agent === 'SCOUT' && (d.kind === 'info' || d.kind === 'warn')) this.statusLines[d.reason.split(' ')[0]] = { msg: d.reason, ok: d.kind === 'info' };
-    if (d.kind !== 'hold' || (d.data as any)?.attempt === 0) { this.feed.push(d); if (this.feed.length > 80) this.feed.shift(); }
+    if (d.kind !== 'hold' || (d.data as any)?.attempt === 0) { this.feed.push(d); if (this.feed.length > FEED_MAX) this.feed.shift(); }
     fs.appendFileSync(path.join(this.dayDir(d.ts), 'decisions.jsonl'), JSON.stringify(d) + '\n');
     activity.inc('LOGGER', 'lines');
     if (d.kind === 'error') activity.inc('LOGGER', 'errors');
@@ -129,6 +152,7 @@ export class Logger {
 
   snapshot() {
     const s = this.d.state, eq = equityOf(s);
+    s.counters = Object.fromEntries([...activity.agents.values()].map((a) => [a.name, { ...a.counters }]));
     writeJson('live.json', {
       at: clock.now(), mode: s.mode, data: this.d.market.kind, speed: clock.speed, startedAt: s.sessionStartedAt,
       startBalance: s.startBalanceSol, balance: s.balanceSol, equity: eq, solUsd: this.d.solUsd,
@@ -137,7 +161,9 @@ export class Logger {
         stopPct: (p.stopPrice / p.entryPrice - 1) * 100, trail: p.trailActive, peakPct: (p.peakPrice / p.entryPrice - 1) * 100, openedAt: p.openedAt })),
       closed: { n: s.closed.length, wins: s.closed.filter((t) => t.pnlSol > 0).length, pnl: s.closed.reduce((a, t) => a + t.pnlSol, 0) },
       agents: [...activity.agents.values()], waiting: this.waitingCount(), feeds: this.statusLines,
-      equityCurve: s.equity.slice(-400), feed: this.feed.slice(-40), violations: s.violations.length,
+      equityCurve: s.equity.slice(-600), feed: this.feed, violations: s.violations.length,
+      recent: s.closed.slice(-12).map((t) => ({ symbol: t.symbol, mint: t.mint, pnlPct: t.pnlPct, pnlSol: t.pnlSol, closedAt: t.closedAt,
+        heldMin: (t.closedAt - t.openedAt) / 60_000, exit: t.exitReason.split(/[:(]/)[0].trim(), shadow: !!t.shadowCooldown })),
     });
   }
 }

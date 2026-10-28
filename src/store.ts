@@ -35,6 +35,7 @@ export interface DeskState {
   revengeBans: Record<string, number>; // mint -> until ts
   equity: { t: number; v: number }[];  // sampled equity curve (SOL)
   violations: string[];               // any hard-limit breach attempts (should stay empty)
+  counters?: Record<string, Record<string, number>>; // agent activity counters, kept across restarts
   lastRecapDay: string;
 }
 
