@@ -170,6 +170,7 @@ export class SimMarket implements Market {
   }
   async quoteSell(mint: string, tokens: number) {
     const t = this.toks.get(mint); if (!t) return null;
+    if (rand() < 0.01) return { sol: tokens * t.price * (rand() < 0.5 ? 9 : 0.01), impactPct: 0 }; // bad route
     const gross = tokens * t.price; const impact = (gross * SOL_USD) / (this.liqUsd(t) / 2) * 100;
     return { sol: gross * Math.max(0, 1 - impact / 100) * (1 - 0.006), impactPct: impact };
   }

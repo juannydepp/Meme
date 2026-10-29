@@ -64,7 +64,7 @@ export class Analyst {
 
     // vetoes: a good average can't buy a token that is dumping right now or has already run
     const veto = dumping ? `dumping now (5m ${pct(s.changeM5, 0)}, ${s.sellsM5} sells vs ${s.buysM5} buys)`
-      : c.notLate === 0 ? `already ran ${pct(s.changeH1, 0)} in the last hour` : null;
+      : c.notLate < 0.3 ? `already ran ${pct(s.changeH1, 0)} in the last hour` : null;
     if (veto || rounded < CONFIG.minScore) {
       activity.inc('ANALYST', 'reject');
       bus.decide({ agent: 'ANALYST', kind: 'reject', mint: t.mint, symbol: t.symbol, leadId: t.leadId,

@@ -56,6 +56,7 @@ export const CONFIG = {
   top10MaxPct: tighter('TOP10_MAX_PCT', num('TOP10_MAX_PCT', HARD.TOP10_MAX_PCT), HARD.TOP10_MAX_PCT, 'lower'),
   minVolumeH1: tighter('MIN_VOLUME_H1_USD', num('MIN_VOLUME_H1_USD', HARD.MIN_VOLUME_H1_USD), HARD.MIN_VOLUME_H1_USD, 'higher'),
   minLpLockedPct: tighter('MIN_LP_LOCKED_PCT', num('MIN_LP_LOCKED_PCT', HARD.MIN_LP_LOCKED_PCT), HARD.MIN_LP_LOCKED_PCT, 'higher'),
+  minPairAgeMin: num('MIN_PAIR_AGE_MIN', 20),        // pool must be this old: skip the post-graduation spike
   serialLaunchMax: num('SERIAL_LAUNCH_MAX', 3),         // dev launched >= N tokens in 72h = serial launcher = kill
   recheckMinutes: [2, 5, 10, 15, 20, 30, 45, 60],       // when to re-test volume/holder checks on young pairs
 

@@ -13,6 +13,7 @@ import type { CheckResult, Lead, PairSnapshot, SafetyReport } from '../types';
 //   lp_locked        LP >= 95% locked/burned                  (fail = re-check later)
 //   top10            top 10 holders <= 20%, pools/burn excl.  (fail = re-check later)
 //   volume_1h        >= $50k volume in the last hour          (fail = re-check later)
+//   pool_age         pool open >= 20 min (skip the graduation spike) (fail = re-check later)
 //   dev_clean        dev not tied to previous rugs            (fail = dead)
 //
 // "Re-check later" exists because a 3-minute-old pool can't have $50k of hourly volume
@@ -68,6 +69,11 @@ export class Filter {
     }
     if (!snap) add('pair_data', false, 'no SOL pair indexed yet', 'price + volume data required', false);
     else add('volume_1h', snap.volH1 >= CONFIG.minVolumeH1, usd(snap.volH1), `>= ${usd(CONFIG.minVolumeH1)}`, false);
+    if (snap) {
+      // the first minutes after graduation are a spike that usually dumps; the $50k/1h volume is mostly that spike
+      const ageMin = snap.pairCreatedAt > 0 ? (clock.now() - snap.pairCreatedAt) / 60_000 : null;
+      add('pool_age', ageMin !== null && ageMin >= CONFIG.minPairAgeMin, ageMin === null ? 'unknown' : `${ageMin.toFixed(0)}m`, `>= ${CONFIG.minPairAgeMin}m since pool opened`, false);
+    }
 
     // dev check is the expensive one; skip it if something already killed the lead for good
     if (!checks.some((c) => !c.pass && c.permanent)) checks.push(await this.devCheck(lead, safety));

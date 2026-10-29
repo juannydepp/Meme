@@ -111,7 +111,8 @@ export class Executor {
         }
         if (lastErr) throw lastErr;
       } else {
-        const q = await this.d.market.quoteSell(p.mint, p.tokens, p.decimals);
+        let q = await this.d.market.quoteSell(p.mint, p.tokens, p.decimals);
+        if (q && o.markPrice > 0 && Math.abs(q.sol / p.tokens / o.markPrice - 1) > 0.35) q = (await this.d.market.quoteSell(p.mint, p.tokens, p.decimals)) ?? q;
         proceeds = q ? q.sol : p.tokens * o.markPrice * (1 - CONFIG.costModelFeePct / 100);
         proceeds = Math.max(0, proceeds - 0.0002);
       }

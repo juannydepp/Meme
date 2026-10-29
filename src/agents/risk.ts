@@ -19,6 +19,7 @@ export class Risk {
   private confirming = new Set<string>();
   private unconfirmed = new Set<string>();
   private ticking = false;
+  private pendingJump = new Map<string, number>();
   constructor(private d: Desk) {}
 
   start() {
@@ -68,9 +69,20 @@ export class Risk {
       const snap = snaps.get(p.mint);
       const q = await this.d.market.quoteSell(p.mint, p.tokens, p.decimals);
       const now = clock.now();
-      const quoted = q && p.tokens > 0 && q.sol > 0;
-      if (quoted) { p.lastPrice = q!.sol / p.tokens; p.lastPriceAt = now; }
-      else if (snap && snap.priceSol > 0) { p.lastPrice = snap.priceSol; p.lastPriceAt = now; }
+      let quoted = !!(q && p.tokens > 0 && q.sol > 0);
+      if (quoted) {
+        // a single Jupiter quote can be garbage on thin/odd routes (seen: +1002% then -99.8% on XTO).
+        // A move of >35% vs the last accepted mark needs a second quote within 15% of it.
+        const px = q!.sol / p.tokens;
+        const pend = this.pendingJump.get(p.id);
+        if (Math.abs(px / p.lastPrice - 1) > 0.35 && !(pend && Math.abs(px / pend - 1) < 0.15)) {
+          this.pendingJump.set(p.id, px);
+          bus.decide({ agent: 'RISK', kind: 'info', mint: p.mint, symbol: p.symbol,
+            reason: `QUOTE JUMP ${sym(p.symbol, p.mint)} ${pct((px / p.entryPrice - 1) * 100)} vs mark ${pct((p.lastPrice / p.entryPrice - 1) * 100)} — re-quoting before acting` });
+          quoted = false;
+        } else { this.pendingJump.delete(p.id); p.lastPrice = px; p.lastPriceAt = now; }
+      }
+      if (!quoted && !this.pendingJump.has(p.id) && snap && snap.priceSol > 0) { p.lastPrice = snap.priceSol; p.lastPriceAt = now; }
       // liquidity only counts on the same pool we entered (DexScreener flips between pairs)
       const samePool = snap && (!p.pairAddress || snap.pairAddress === p.pairAddress);
       if (samePool) p.lastLiquidityUsd = snap!.liquidityUsd;
@@ -143,6 +155,7 @@ export class Risk {
     const s = this.d.state;
     this.exiting.delete(t.id);
     this.unconfirmed.delete(t.id);
+    this.pendingJump.delete(t.id);
     if (t.pnlSol < 0) {
       s.lossStreak++;
       s.revengeBans[t.mint] = clock.now() + CONFIG.revengeBanHours * 3600_000;
