@@ -55,19 +55,28 @@ export class Executor {
         s.violations.push(`${new Date(clock.now()).toISOString()} blocked size ${size} > 8% of ${s.balanceSol}`);
         return this.reject(t, 'SIZE ASSERTION FAILED — blocked');
       }
-      const why = `score ${t.score.toFixed(2)} [${Object.entries(t.components).map(([k, x]) => `${k} ${x}`).join(', ')}] · ${t.reasons.join(' · ')}`;
+      const why = () => `round trip ${roundTripPct.toFixed(1)}% · score ${t.score.toFixed(2)} [${Object.entries(t.components).map(([k, x]) => `${k} ${x}`).join(', ')}] · ${t.reasons.join(' · ')}`;
 
-      // 4. execute
+      // 4. pre-trade check: quote the buy AND the immediate sell. Refuses bad routes
+      //    (SELLICON lost 98% at 0m) and tokens too expensive to trade in and out.
       const decimals = v.filter.safety.decimals ?? 6;
+      const qb = await this.d.market.quoteBuy(t.mint, size, decimals);
+      if (!qb || !(qb.tokens > 0)) return this.reject(t, 'no buy quote from Jupiter');
+      const qs = await this.d.market.quoteSell(t.mint, qb.tokens, decimals);
+      if (!qs || !(qs.sol > 0)) return this.reject(t, 'no sell quote from Jupiter — could not exit');
+      const roundTripPct = (1 - qs.sol / size) * 100;
+      const dexPx = v.filter.snapshot.priceSol, fillPx = size / qb.tokens;
+      if (dexPx > 0 && fillPx > dexPx * 1.3) return this.reject(t, `buy quote ${(((fillPx / dexPx) - 1) * 100).toFixed(0)}% above market price — bad route`);
+      if (roundTripPct > CONFIG.maxRoundTripPct) return this.reject(t, `round trip costs ${roundTripPct.toFixed(1)}% (max ${CONFIG.maxRoundTripPct}%) — fees/impact eat the stop`);
+
+      // 5. execute
       let tokens: number, cost: number, sig: string | undefined;
       if (this.wallet) {
         const r = await this.wallet.buy(t.mint, size);
         tokens = r.tokens; cost = r.solSpent; sig = r.sig;
         if (!(tokens > 0)) throw new Error(`buy landed but no tokens received (${sig})`);
       } else {
-        const q = await this.d.market.quoteBuy(t.mint, size, decimals);
-        const px = v.filter.snapshot.priceSol;
-        tokens = q ? q.tokens : (size / px) * (1 - CONFIG.costModelFeePct / 100) * (1 - (size * this.d.solUsd) / (v.filter.snapshot.liquidityUsd / 2));
+        tokens = qb.tokens;
         cost = size + 0.0002; // + network/priority fee estimate
       }
       // the swap input is capped at 8%; network fee + token-account rent ride on top
@@ -79,7 +88,7 @@ export class Executor {
         tokens, costSol: cost, entryPrice, entryLiquidityUsd: v.filter.snapshot.liquidityUsd, pairAddress: v.filter.snapshot.pairAddress, openedAt: clock.now(),
         peakPrice: entryPrice, trailActive: false, stopPrice: entryPrice * (1 - CONFIG.stopLossPct),
         lastPrice: entryPrice, lastPriceAt: clock.now(), lastLiquidityUsd: v.filter.snapshot.liquidityUsd,
-        filterTicketId: v.filter.ticketId, analystTicketId: t.ticketId, entryReason: why, buySig: sig,
+        filterTicketId: v.filter.ticketId, analystTicketId: t.ticketId, entryReason: why(), buySig: sig,
         shadowCooldown: this.risk.shadowCooldown() ?? undefined,
       };
       s.balanceSol -= cost;
@@ -87,7 +96,7 @@ export class Executor {
       saveState(s);
       activity.inc('EXECUTOR', 'buys');
       bus.decide({ agent: 'EXECUTOR', kind: 'buy', mint: t.mint, symbol: t.symbol,
-        reason: `BUY ${sym(t.symbol, t.mint)} ${cost.toFixed(3)} SOL (${((cost / (s.balanceSol + cost)) * 100).toFixed(1)}% of bal)${p.shadowCooldown ? ` [IN SHADOW COOLDOWN: ${p.shadowCooldown}]` : ''} — ${why}`,
+        reason: `BUY ${sym(t.symbol, t.mint)} ${cost.toFixed(3)} SOL (${((cost / (s.balanceSol + cost)) * 100).toFixed(1)}% of bal)${p.shadowCooldown ? ` [IN SHADOW COOLDOWN: ${p.shadowCooldown}]` : ''} — ${why()}`,
         data: { positionId: p.id, cost, tokens, entryPrice, sig, shadowCooldown: p.shadowCooldown, filterTicket: v.filter.ticketId, analystTicket: t.ticketId } });
       bus.emit('position.opened', p);
     } catch (e: any) {

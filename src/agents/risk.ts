@@ -107,6 +107,11 @@ export class Risk {
         bus.decide({ agent: 'RISK', kind: 'info', mint: p.mint, symbol: p.symbol, reason: `TRAIL ARMED ${sym(p.symbol, p.mint)} at ${pct(chg * 100)} — exits ${(CONFIG.trailDistancePct * 100).toFixed(0)}% below peak` });
       }
       if (p.trailActive) p.stopPrice = Math.max(p.stopPrice, p.peakPrice * (1 - CONFIG.trailDistancePct));
+      // zombie positions (no move, slowly bleeding) block new entries forever: give each one a deadline
+      const heldMin = (now - p.openedAt) / 60_000;
+      if (!p.trailActive && heldMin >= CONFIG.staleExitMin && chg < 0) {
+        this.exit(p, `stale: no +${(CONFIG.trailActivatePct * 100).toFixed(0)}% in ${Math.round(heldMin)}m, at ${pct(chg * 100)} — freeing the slot`); continue;
+      }
       if (p.lastPrice <= p.stopPrice) {
         void this.confirmThenExit(p, p.trailActive
           ? `trailing stop: ${pct(chg * 100)} (peak ${pct((p.peakPrice / p.entryPrice - 1) * 100)})`

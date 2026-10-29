@@ -61,6 +61,8 @@ export const CONFIG = {
   recheckMinutes: [2, 5, 10, 15, 20, 30, 45, 60],       // when to re-test volume/holder checks on young pairs
 
   // extra capital-preservation guards
+  maxRoundTripPct: num('MAX_ROUNDTRIP_PCT', 3),        // buy+immediate sell may cost at most this %
+  staleExitMin: num('STALE_EXIT_MIN', 90),              // no +12% within this many minutes and under water = exit
   maxOpenPositions: num('MAX_OPEN_POSITIONS', 3),
   maxPoolSharePct: num('MAX_POOL_SHARE_PCT', 1.5),      // our buy <= 1.5% of pool liquidity
   minTradeSol: num('MIN_TRADE_SOL', 0.02),
